@@ -23,49 +23,26 @@ function stop() {
     // console.log("Message time: " + Date.now());
     // send('PING', '');
     peerConnection.close();
-    send('STOP', '');
 }
 
-var mediaConstraints = {
-    offerToReceiveAudio: true,
-    offerToReceiveVideo: true
-};
-
 function processMessage(data) {
-    var m = JSON.parse(data.body);
+    let m = JSON.parse(data.body);
     switch (m.type) {
-        case "START": {
-            peerConnection = new RTCPeerConnection(rtcConfiguration);
-            peerConnection.onicecandidate = onIceCandidate;
-            peerConnection.createOffer(mediaConstraints)
-                .then(function(offer) {
-                    return peerConnection.setLocalDescription(offer);
-                })
-                .then(function() {
-                    send("MEDIA", peerConnection.localDescription)
-                });
-            break;
-        }
         case "MEDIA": {
-            var sdp = JSON.parse(m.message);
-            var desc = new RTCSessionDescription(sdp);
-            peerConnection.setRemoteDescription(desc)
-                .then(function () {
-                    return navigator.mediaDevices.getUserMedia({video: true, audio: false});
-                })
-                .then(function(stream) {
-                    var localStream = stream;
-                    localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
-                });
+            createAnswer().catch(e => console.log(e));
             break;
         }
         case "ICE": {
-            var ice = JSON.parse(m.message);
-            var candidate = new RTCIceCandidate(ice);
-            peerConnection.addIceCandidate(candidate);
             break;
         }
     }
+}
+
+async function createAnswer() {
+    const localStream = await navigator.mediaDevices.getUserMedia({audio: false, video: true});
+
+    localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+
 }
 
 function send(type, message) {
@@ -84,8 +61,4 @@ function onIceCandidate(event) {
     }
 
     send("ICE", event.candidate);
-}
-
-function onSdpError(e) {
-    console.error('onSdpError', e);
 }
