@@ -1,17 +1,17 @@
-var rtcConfiguration = {
+const rtcConfiguration = {
     iceServers: [
         {urls: "stun:stun.services.mozilla.com"},
         {urls: "stun:stun.l.google.com:19302"}
     ]
 };
 
-var stompClient = null;
-var peerConnection = null;
+let stompClient = null;
+let peerConnection = null;
 
 connect();
 
 function connect() {
-    var socket = new SockJS('/websocket-endpoint');
+    const socket = new SockJS('/websocket-endpoint');
     stompClient = Stomp.over(socket);
     stompClient.connect({}, function (frame) {
         console.log('Connected: ' + frame);
@@ -20,29 +20,42 @@ function connect() {
 }
 
 function stop() {
-    // console.log("Message time: " + Date.now());
-    // send('PING', '');
     peerConnection.close();
 }
 
-function processMessage(data) {
+async function processMessage(data) {
     let m = JSON.parse(data.body);
     switch (m.type) {
         case "MEDIA": {
-            createAnswer().catch(e => console.log(e));
+            const offer = JSON.parse(m.message);
+            const desc = new RTCSessionDescription(offer);
+
+            peerConnection = new RTCPeerConnection(rtcConfiguration);
+            peerConnection.addEventListener('icecandidate', onIceCandidate);
+
+            const localStream = await navigator.mediaDevices.getUserMedia({audio: false, video: true});
+
+            localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
+
+            await peerConnection.setRemoteDescription(desc);
+            const answer = await peerConnection.createAnswer();
+            await peerConnection.setLocalDescription(answer);
+
+            send('MEDIA', answer);
+
             break;
         }
         case "ICE": {
+            const ice = JSON.parse(m.message);
+            const candidate = new RTCIceCandidate(ice);
+            await peerConnection.addIceCandidate(candidate);
+            break;
+        }
+        case "STOP": {
+            peerConnection.close();
             break;
         }
     }
-}
-
-async function createAnswer() {
-    const localStream = await navigator.mediaDevices.getUserMedia({audio: false, video: true});
-
-    localStream.getTracks().forEach(track => peerConnection.addTrack(track, localStream));
-
 }
 
 function send(type, message) {

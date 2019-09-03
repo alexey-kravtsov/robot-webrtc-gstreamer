@@ -7,6 +7,10 @@ const rtcConfiguration = {
 
 let stompClient = null;
 let peerConnection = null;
+const offerOptions = {
+    offerToReceiveAudio: false,
+    offerToReceiveVideo: true
+};
 
 function connect() {
     let socket = new SockJS('/websocket-endpoint');
@@ -18,20 +22,30 @@ function connect() {
         peerConnection = new RTCPeerConnection(rtcConfiguration);
         peerConnection.addEventListener('icecandidate', onIceCandidate);
         peerConnection.addEventListener('track', onRemoteTrack);
+        const offer = await peerConnection.createOffer(offerOptions);
+        await peerConnection.setLocalDescription(offer);
+        send('MEDIA', offer);
     });
 }
 
 function stop() {
     peerConnection.close();
+    send('STOP', '');
 }
 
-function processMessage(data) {
+async function processMessage(data) {
     let m = JSON.parse(data.body);
     switch (m.type) {
         case "MEDIA": {
+            const answer = JSON.parse(m.message);
+            const desc = new RTCSessionDescription(answer);
+            await peerConnection.setRemoteDescription(desc);
             break;
         }
         case "ICE": {
+            const ice = JSON.parse(m.message);
+            const candidate = new RTCIceCandidate(ice);
+            await peerConnection.addIceCandidate(candidate);
             break;
         }
     }
@@ -45,8 +59,6 @@ function send(type, message) {
 }
 
 function onIceCandidate(event) {
-    // We have a candidate, send it to the remote party with the
-    // same uuid
     if (event.candidate == null) {
         console.log("ICE Candidate was null, done");
         return;
@@ -56,15 +68,10 @@ function onIceCandidate(event) {
 }
 
 function onRemoteTrack(event) {
-    var videoElement = getVideoElement();
-    var stream = event.streams[0];
-    console.log("stream: " + stream);
-    if (videoElement.srcObject !== stream) {
+    const $videoElement = $("#stream").get(0);
+    const stream = event.streams[0];
+    if ($videoElement.srcObject !== stream) {
         console.log('Incoming stream');
-        videoElement.srcObject = stream;
+        $videoElement.srcObject = stream;
     }
-}
-
-function getVideoElement() {
-    return document.getElementById("stream");
 }
